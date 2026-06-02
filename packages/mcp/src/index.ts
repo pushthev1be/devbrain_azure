@@ -18,6 +18,7 @@ import {
 import type { EntryCategory } from '@devbrain/core';
 import type { Entry } from '@devbrain/core';
 import { nanoid } from 'nanoid';
+import { mongoMcpFind } from './mongoMcp';
 
 // Load GEMINI_API_KEY from ~/.devbrain/.env
 const envPath = join(homedir(), '.devbrain', '.env');
@@ -201,6 +202,42 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           limit: {
             type: 'number',
             description: 'Max entries to return (default 20, max 50).',
+          },
+        },
+      },
+    },
+    {
+      name: 'query_knowledge_db',
+      description:
+        'Query the DevBrain MongoDB knowledge base directly via the MongoDB MCP server. ' +
+        'Returns raw entries from Atlas with optional type, category, and date filters. ' +
+        'Powered by @mongodb-js/mongodb-mcp-server — use this for analytics, audits, or ' +
+        'when you need exact document-level access rather than semantic search.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          collection: {
+            type: 'string',
+            enum: ['entries', 'projects'],
+            description: 'Collection to query (default: entries)',
+          },
+          type: {
+            type: 'string',
+            enum: ['bug', 'fix', 'decision', 'pattern', 'lesson', 'stack', 'solution', 'note', 'anti-pattern'],
+            description: 'Filter by entry type.',
+          },
+          category: {
+            type: 'string',
+            enum: ['auth','database','deployment','build','config','network','performance','ui','data','testing','security','other'],
+            description: 'Filter by problem category.',
+          },
+          since_days: {
+            type: 'number',
+            description: 'Only return entries created within this many days.',
+          },
+          limit: {
+            type: 'number',
+            description: 'Max documents to return (default 10, max 25).',
           },
         },
       },
@@ -400,6 +437,47 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const header = `DevBrain entries${type ? ` Â· type:${type}` : ''}${category ? ` Â· category:${category}` : ''}${since_days ? ` Â· last ${since_days}d` : ''} (${filtered.length} results)`;
       return { content: [{ type: 'text', text: `${header}\n\n${text}` }] };
+    }
+
+    // ── query_knowledge_db ──────────────────────────────────────────────────────
+    if (name === 'query_knowledge_db') {
+      const { collection = 'entries', type, category, since_days, limit = 10 } = (args ?? {}) as {
+        collection?: string; type?: string; category?: string;
+        since_days?: number; limit?: number;
+      };
+
+      const filter: Record<string, unknown> = {};
+      if (type)       filter['type']     = type;
+      if (category)   filter['category'] = category;
+      if (since_days) filter['createdAt'] = { $gte: Date.now() - since_days * 86_400_000 };
+
+      const { documents, summary } = await mongoMcpFind(collection, {
+        filter: Object.keys(filter).length ? filter : undefined,
+        projection: { embedding: 0 },
+        limit: Math.min(limit, 25),
+        sort: { createdAt: -1 },
+      });
+
+      if (documents.length === 0) {
+        return { content: [{ type: 'text', text: `MongoDB MCP: no documents found in ${collection}` }] };
+      }
+
+      const rows = documents.map((d, i) => {
+        const doc = d as Record<string, unknown>;
+        const title    = String(doc.title    ?? '');
+        const entryType = String(doc.type    ?? '');
+        const cat      = String(doc.category ?? '');
+        const content  = String(doc.content  ?? '').slice(0, 150);
+        const ts       = typeof doc.createdAt === 'number' ? timeAgo(doc.createdAt) : '';
+        return `${i + 1}. [${entryType}]${cat ? ' [' + cat + ']' : ''} ${title}\n   ${ts}\n   ${content}`;
+      }).join('\n\n');
+
+      return {
+        content: [{
+          type: 'text',
+          text: `MongoDB MCP • ${summary}\n\n${rows}`,
+        }],
+      };
     }
 
     return { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true };
