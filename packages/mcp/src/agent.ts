@@ -24,16 +24,13 @@ export async function runAgent(
   mcpUrl: string
 ): Promise<string> {
   // ADK backend selection:
-  // - Cloud Run: use Vertex AI via Application Default Credentials (service account)
-  // - Local: fall back to Gemini API key
+  // - Cloud Run (K_SERVICE is set): force Vertex AI via service account ADC
+  // - Local: use Gemini API key
   const onCloudRun = !!process.env.K_SERVICE;
   if (onCloudRun) {
-    process.env.GOOGLE_CLOUD_PROJECT  = process.env.GOOGLE_CLOUD_PROJECT  ?? 'gen-lang-client-0224314788';
-    process.env.GOOGLE_CLOUD_LOCATION = process.env.GOOGLE_CLOUD_LOCATION ?? 'us-central1';
-    // Clear API key env vars so ADK uses Vertex AI ADC instead of free-tier Gemini API
-    delete process.env.GOOGLE_API_KEY;
-    delete process.env.GOOGLE_GENAI_API_KEY;
-    // Keep GEMINI_API_KEY for the rest of the app but unset ADK-specific ones
+    process.env.GOOGLE_CLOUD_PROJECT       = process.env.GOOGLE_CLOUD_PROJECT  ?? 'gen-lang-client-0224314788';
+    process.env.GOOGLE_CLOUD_LOCATION      = process.env.GOOGLE_CLOUD_LOCATION ?? 'us-central1';
+    process.env.GOOGLE_GENAI_USE_VERTEXAI  = 'true';
   } else if (process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY) {
     process.env.GOOGLE_API_KEY = process.env.GEMINI_API_KEY;
   }
