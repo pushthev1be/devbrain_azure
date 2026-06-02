@@ -23,15 +23,8 @@ export async function runAgent(
   query: string,
   mcpUrl: string
 ): Promise<string> {
-  // ADK backend selection:
-  // - Cloud Run (K_SERVICE is set): force Vertex AI via service account ADC
-  // - Local: use Gemini API key
-  const onCloudRun = !!process.env.K_SERVICE;
-  if (onCloudRun) {
-    process.env.GOOGLE_CLOUD_PROJECT       = process.env.GOOGLE_CLOUD_PROJECT  ?? 'gen-lang-client-0224314788';
-    process.env.GOOGLE_CLOUD_LOCATION      = process.env.GOOGLE_CLOUD_LOCATION ?? 'us-central1';
-    process.env.GOOGLE_GENAI_USE_VERTEXAI  = 'true';
-  } else if (process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY) {
+  // ADK uses GOOGLE_API_KEY; map from GEMINI_API_KEY if needed
+  if (process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY) {
     process.env.GOOGLE_API_KEY = process.env.GEMINI_API_KEY;
   }
 
@@ -40,11 +33,9 @@ export async function runAgent(
     url: mcpUrl,
   });
 
-  // Vertex AI requires explicit version suffix; Gemini API accepts the short name
-  const model = onCloudRun ? 'gemini-2.0-flash-001' : 'gemini-2.0-flash';
   const agent = new LlmAgent({
     name: 'devbrain',
-    model,
+    model: 'gemini-2.0-flash',
     description: 'Developer knowledge assistant powered by DevBrain and Gemini',
     instruction: AGENT_INSTRUCTION,
     tools: [mcpToolset],
