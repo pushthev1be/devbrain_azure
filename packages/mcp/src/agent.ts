@@ -23,11 +23,17 @@ export async function runAgent(
   query: string,
   mcpUrl: string
 ): Promise<string> {
-  // ADK model resolution: prefer Vertex AI on Cloud Run, fall back to Gemini API key locally
-  const onCloudRun = !!process.env.K_SERVICE; // Cloud Run sets K_SERVICE automatically
+  // ADK backend selection:
+  // - Cloud Run: use Vertex AI via Application Default Credentials (service account)
+  // - Local: fall back to Gemini API key
+  const onCloudRun = !!process.env.K_SERVICE;
   if (onCloudRun) {
     process.env.GOOGLE_CLOUD_PROJECT  = process.env.GOOGLE_CLOUD_PROJECT  ?? 'gen-lang-client-0224314788';
     process.env.GOOGLE_CLOUD_LOCATION = process.env.GOOGLE_CLOUD_LOCATION ?? 'us-central1';
+    // Clear API key env vars so ADK uses Vertex AI ADC instead of free-tier Gemini API
+    delete process.env.GOOGLE_API_KEY;
+    delete process.env.GOOGLE_GENAI_API_KEY;
+    // Keep GEMINI_API_KEY for the rest of the app but unset ADK-specific ones
   } else if (process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY) {
     process.env.GOOGLE_API_KEY = process.env.GEMINI_API_KEY;
   }
@@ -67,6 +73,11 @@ export async function runAgent(
           .join('')
           .trim();
         if (text) response = text;
+      }
+      // Propagate Gemini errors (rate limit, auth, etc.) so callers get a real error
+      if ((event as unknown as Record<string, unknown>).errorCode) {
+        const e = event as unknown as { errorCode: number; errorMessage: string };
+        throw new Error(`Gemini error ${e.errorCode}: ${e.errorMessage}`);
       }
       // Also honour the explicit final response marker
       if (isFinalResponse(event) && event.content?.parts) {
