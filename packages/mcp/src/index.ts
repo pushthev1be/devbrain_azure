@@ -19,6 +19,7 @@ import type { EntryCategory } from '@devbrain/core';
 import type { Entry } from '@devbrain/core';
 import { nanoid } from 'nanoid';
 import { mongoMcpFind } from './mongoMcp';
+import { runAgent } from './agent';
 
 // Load GEMINI_API_KEY from ~/.devbrain/.env
 const envPath = join(homedir(), '.devbrain', '.env');
@@ -996,6 +997,26 @@ const httpServer = createServer(async (req, res) => {
           const text = formatContext(ctx, query);
           json(res, 200, { text, context: text });
         } catch (err) { json(res, 500, { error: String(err) }); }
+        return;
+      }
+
+      if (url === '/agent' && req.method === 'OPTIONS') {
+        res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type' });
+        res.end(); return;
+      }
+
+      if (url === '/agent' && req.method === 'POST') {
+        try {
+          const { query } = await readBody(req) as { query: string };
+          if (!query?.trim()) { json(res, 400, { error: 'query is required' }); return; }
+          const mcpUrl = `http://localhost:${PORT}/mcp`;
+          const response = await runAgent(query, mcpUrl);
+          json(res, 200, { response, powered_by: 'Google ADK + Gemini 2.0 Flash + DevBrain MCP' });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          const status = msg.includes('429') || msg.includes('quota') ? 429 : 500;
+          json(res, status, { error: msg });
+        }
         return;
       }
 
