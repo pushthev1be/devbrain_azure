@@ -40,9 +40,11 @@ export async function runAgent(
     url: mcpUrl,
   });
 
+  // Vertex AI requires explicit version suffix; Gemini API accepts the short name
+  const model = onCloudRun ? 'gemini-2.0-flash-001' : 'gemini-2.0-flash';
   const agent = new LlmAgent({
     name: 'devbrain',
-    model: 'gemini-2.0-flash',
+    model,
     description: 'Developer knowledge assistant powered by DevBrain and Gemini',
     instruction: AGENT_INSTRUCTION,
     tools: [mcpToolset],
