@@ -12,6 +12,12 @@ Every project you register gets two things: a git hook that captures knowledge f
 
 The memory compounds. An entry retrieved across multiple projects gets flagged as a cross-project pattern and surfaces in every future context load. An entry retrieved 3+ times gets promoted from `observation` to `confirmed` confidence.
 
+### Collaborative Teamwork & Sibling Updates
+DevBrain bridges engineering teams across codebases:
+- **The Team Feed**: A real-time web dashboard serves a live visual timeline of technical breakthroughs, bug fixes, and architectural choices across all active repositories in the team.
+- **CLI Sibling alerts**: When you load context inside the CLI, DevBrain proactively checks other projects and highlights recent fixes from sibling repositories (e.g. sharing a layout fix from a mobile repo with a web frontend developer), avoiding redundant troubleshooting.
+
+
 ---
 
 ## Install
@@ -157,6 +163,12 @@ Devbrain checks for near-duplicate entries at save time (>86% embedding similari
 
 ## Tech Stack
 React · TypeScript · Node.js · Express · MongoDB
+
+📢 Team Updates (from Sibling Projects)
+  • [fix] Fix safe-area overlap and remove backdrop blurs from mobile navigation overlays (oracle-odds-ai · 2d ago)
+    → Removed backdrop filters in favor of solid high-opacity backgrounds to resolve rendering overhead and...
+  • [fix] Fix z-index nesting trap and mobile contrast issues in React+Tailwind layout (oracle-odds-ai · 2d ago)
+    → Resolved layout overlap and modal blocking issues on mobile viewports by moving fixed-overlay modals...
 ```
 
 Sections with 2+ entries are synthesized by Gemini into bullet-point insights. The MCP `get_context` tool returns this format directly.
@@ -217,6 +229,9 @@ After `devbrain /init`, a post-commit hook runs after every commit. Gemini extra
 **Monorepo with npm workspaces** — `core` contains all domain logic and is shared between `cli` and `mcp`. This prevents the two surfaces from drifting — a change to search ranking or entry schema is reflected in both automatically.
 
 **Confidence tiers over arbitrary scoring** — `observation → corroborated → confirmed` maps directly to how knowledge actually becomes reliable: it's observed once, then seen to work again, then proven across multiple retrievals.
+
+**Collaborative Cross-Project Feed & CLI alerts** — Implemented a centralized `/api/feed` endpoint and visual timeline dashboard for real-time team collaboration. Sibling project alerts are proactively routed to the CLI output, creating a shared team engineering memory layer that automatically prevents duplicate work across separate development silos.
+
 
 ---
 
