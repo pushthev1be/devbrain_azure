@@ -17,7 +17,7 @@ DevBrain bridges engineering teams across codebases:
 - **The Team Feed**: A real-time web dashboard serves a live visual timeline of technical breakthroughs, bug fixes, and architectural choices across all active repositories in the team.
 - **CLI Sibling alerts**: When you load context inside the CLI, DevBrain proactively checks other projects and highlights recent fixes from sibling repositories (e.g. sharing a layout fix from a mobile repo with a web frontend developer), avoiding redundant troubleshooting.
 
-
+<img width="1836" height="909" alt="Image" src="https://github.com/user-attachments/assets/5e286c59-708e-4a96-bbd1-5d0733dbce46" />
 ---
 
 ## Install
