@@ -42,6 +42,36 @@ function getClient(): GoogleGenerativeAI {
 export async function extractKnowledge(diff: string, commitMessage: string): Promise<ExtractedKnowledge | null> {
   if (process.env.DEVBRAIN_MOCK === 'true') {
     const msg = commitMessage.toLowerCase();
+    if (msg.includes('abort') || msg.includes('race') || msg.includes('fetcher')) {
+      if (msg.includes('fix') || msg.includes('resolved') || msg.includes('abort')) {
+        return {
+          problem: "Race condition in asynchronous data fetching causes stale profiles to overwrite active views",
+          solution: "Resolved the race condition by using an AbortController inside the useEffect hook to cancel outstanding fetch requests on dependency changes/unmount",
+          tags: ["react", "async", "race-condition", "abort-controller", "useEffect"],
+          type: "fix",
+          category: "performance",
+          errorPattern: "Stale asynchronous fetch overwrites current state",
+          causeArchetype: "unhandled async callback after component unmount or dependency update"
+        };
+      }
+      if (msg.includes('bug') || msg.includes('debug') || msg.includes('race')) {
+        return {
+          problem: "Race condition in asynchronous data fetching causes stale profiles to overwrite active views",
+          solution: "Identified that rapid tab switching triggers multiple concurrent fetch requests whose responses resolve out-of-order, causing the UI to display incorrect user profiles",
+          tags: ["react", "async", "race-condition", "useEffect"],
+          type: "bug",
+          category: "performance",
+          errorPattern: "Stale asynchronous fetch overwrites current state"
+        };
+      }
+      return {
+        problem: "Asynchronous profile fetcher component for user details",
+        solution: "Implemented baseline async profile fetcher executing fetch requests on user ID change",
+        tags: ["react", "async", "fetch"],
+        type: "note",
+        category: "ui"
+      };
+    }
     if (msg.includes('stale') || msg.includes('closure') || msg.includes('counter')) {
       return {
         problem: "React state value inside useEffect captures stale value due to empty dependency array closure",
@@ -53,7 +83,7 @@ export async function extractKnowledge(diff: string, commitMessage: string): Pro
         causeArchetype: "stale closure capture in hook lifecycle"
       };
     }
-    const isFix = msg.includes('fix') || msg.includes('resolve') || msg.includes('leak');
+    const isFix = msg.includes('fix') || msg.includes('resolve') || msg.includes('solve') || msg.includes('leak');
     if (isFix) {
       return {
         problem: "React memory leak due to missing event listener unsubscribe/cleanup inside useEffect hook",
@@ -107,6 +137,15 @@ If this commit is just a merge, version bump, or has no meaningful knowledge, re
 
     const parsed = JSON.parse(jsonMatch[0]);
     if (parsed.skip) return null;
+
+    // Validate type and category
+    const validTypes = ['bug', 'fix', 'note'];
+    if (!validTypes.includes(parsed.type)) {
+      parsed.type = 'note';
+    }
+    if (parsed.category && !ENTRY_CATEGORIES.includes(parsed.category)) {
+      parsed.category = 'other';
+    }
 
     return parsed as ExtractedKnowledge;
   } catch (err) {

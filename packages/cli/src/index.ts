@@ -339,15 +339,22 @@ async function handleCapture(): Promise<void> {
   const commit = getLastCommit(repoRoot);
   if (!commit) return;
   if (await isCommitProcessed(commit.hash)) return;
+
+  console.log(`\n${CYAN}[DevBrain]${RESET} Processing commit diff...`);
+
   let knowledge;
   try {
     knowledge = await extractKnowledge(commit.diff, commit.message);
   } catch (err) {
-    // rate limit or network error — leave commit unprocessed so next capture retries
+    console.error(`  ${RED}✗${RESET} Failed to extract knowledge: ${err instanceof Error ? err.message : String(err)}`);
     if (err instanceof RateLimitError) return;
     return;
   }
-  if (!knowledge) { await markCommitProcessed(commit.hash, project.id); return; }
+  if (!knowledge) {
+    await markCommitProcessed(commit.hash, project.id);
+    console.log(`  ${DIM}No meaningful developer knowledge found in this commit — skipped.${RESET}\n`);
+    return;
+  }
   const embeddingText = `${knowledge.problem} ${knowledge.solution} ${knowledge.tags.join(' ')}`;
   let embedding: number[] | undefined;
   try { embedding = await getEmbedding(embeddingText); } catch {}
@@ -363,6 +370,10 @@ async function handleCapture(): Promise<void> {
     ...(knowledge.errorPattern ? { errorPattern: knowledge.errorPattern } : {}),
   });
   await markCommitProcessed(commit.hash, project.id);
+
+  const typeColor = typeCode(knowledge.type);
+  console.log(`  ${GREEN}✓${RESET} Captured ${typeColor}${knowledge.type}${RESET}: ${knowledge.problem}`);
+  console.log(`  ${DIM}Stored in MongoDB Atlas Vector Search database.${RESET}\n`);
 }
 
 async function handleSearch(query: string): Promise<void> {
@@ -626,6 +637,22 @@ async function handleContext(query?: string): Promise<void> {
     else console.log(line);
   }
   console.log();
+
+  if (project) {
+    const siblingRecent = all
+      .filter(e => e.projectId !== project.id && !e.supersededBy)
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 3);
+    if (siblingRecent.length > 0) {
+      console.log(`${BOLD}${YELLOW}📢 Team Updates (from Sibling Projects)${RESET}`);
+      siblingRecent.forEach(e => {
+        const typeColor = typeCode(e.type);
+        console.log(`  • ${typeColor}[${e.type}]${RESET} ${e.title} ${DIM}(${e.project.name} · ${timeAgo(e.createdAt)})${RESET}`);
+        console.log(`    ${DIM}→ ${e.content.slice(0, 100)}${e.content.length > 100 ? '...' : ''}${RESET}`);
+      });
+      console.log();
+    }
+  }
 }
 
 // ─── browse ───────────────────────────────────────────────────────────────────

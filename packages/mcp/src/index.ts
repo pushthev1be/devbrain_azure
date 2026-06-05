@@ -696,6 +696,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       <button class="sidebar-item active" id="nav-search" onclick="switchTab('search')"><span class="ic">&#9654;</span> Search</button>
       <button class="sidebar-item" id="nav-context" onclick="switchTab('context')"><span class="ic">&#8801;</span> Context</button>
       <button class="sidebar-item" id="nav-ingest" onclick="switchTab('ingest')"><span class="ic">+</span> Save Entry</button>
+      <button class="sidebar-item" id="nav-feed" onclick="switchTab('feed')"><span class="ic">👥</span> Team Feed</button>
       <div class="sidebar-divider"></div>
       <div class="sidebar-label">Stack</div>
       <div class="sidebar-item" style="cursor:default;color:var(--text3)"><span class="ic">&diams;</span> Gemini 2.0 Flash</div>
@@ -714,6 +715,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         <button class="tab active" id="tab-search" onclick="switchTab('search')">search_knowledge</button>
         <button class="tab" id="tab-context" onclick="switchTab('context')">get_context</button>
         <button class="tab" id="tab-ingest" onclick="switchTab('ingest')">save_entry</button>
+        <button class="tab" id="tab-feed" onclick="switchTab('feed')">team_feed</button>
       </div>
 
       <div class="editor-panel active" id="panel-search">
@@ -780,6 +782,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           <button type="submit" class="vbtn" id="submit-btn" style="width:100%;padding:8px;margin-top:4px">Save to DevBrain</button>
         </form>
       </div>
+
+      <div class="editor-panel" id="panel-feed">
+        <div class="info-strip">
+          <div class="info-cell" style="grid-column: 1 / -1; padding: 12px 16px;">
+            <div class="ic-label">Collaborative Memory Timeline</div>
+            <div class="ic-sub" style="font-size: 13px; color: var(--text2); margin-top: 2px;">
+              Live stream of engineering fixes, decisions, and lessons synced across all team projects.
+            </div>
+          </div>
+        </div>
+        <div id="feed-container"><div class="empty">// loading team activity feed...</div></div>
+      </div>
     </div>
   </div>
 
@@ -794,12 +808,53 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   <script>
     function switchTab(name) {
-      ['search','context','ingest'].forEach(function(t) {
-        document.getElementById('panel-' + t).classList.toggle('active', t === name);
-        document.getElementById('tab-' + t).classList.toggle('active', t === name);
-        var n = document.getElementById('nav-' + t);
-        if (n) n.classList.toggle('active', t === name);
+      ['search','context','ingest','feed'].forEach(function(t) {
+        var panel = document.getElementById('panel-' + t);
+        var tab = document.getElementById('tab-' + t);
+        var nav = document.getElementById('nav-' + t);
+        if (panel) panel.classList.toggle('active', t === name);
+        if (tab) tab.classList.toggle('active', t === name);
+        if (nav) nav.classList.toggle('active', t === name);
       });
+      if (name === 'feed') {
+        loadFeed();
+      }
+    }
+    async function loadFeed() {
+      var box = document.getElementById('feed-container');
+      box.innerHTML = '<div class="empty">// loading team activity feed...</div>';
+      try {
+        var r = await fetch('/api/feed');
+        var d = await r.json();
+        var feed = d.feed || [];
+        if (!feed.length) { box.innerHTML = '<div class="empty">// no team activity recorded yet</div>'; return; }
+        var list = document.createElement('div'); list.className = 'results-list';
+        feed.forEach(function(item) {
+          var el = document.createElement('div'); el.className = 'ri';
+          var tags = (item.tags||[]).map(function(t) { return '<span class="tag-chip">' + t + '</span>'; }).join('');
+          var confBadge = '';
+          if (item.confidence === 'confirmed') confBadge = ' <span style="color:var(--green)">✓ confirmed</span>';
+          else if (item.confidence === 'corroborated') confBadge = ' <span style="color:var(--yellow)">~ corroborated</span>';
+          var catLabel = item.category ? ' [' + item.category + ']' : '';
+          
+          el.innerHTML = '<div class="rh">' +
+            '<span class="tb ' + typeClass(item.type) + '">' + item.type + '</span>' +
+            '<span class="rt" style="font-weight:600">' + item.title + '</span>' +
+            '<span class="sc">' + item.timeAgo + '</span>' +
+            '</div>' +
+            '<div class="rm" style="display:flex; justify-content:space-between; margin-bottom: 6px;">' +
+            '<span>Project: <strong style="color:var(--text)">' + item.project.name + '</strong>' + catLabel + '</span>' +
+            '<span>' + confBadge + '</span>' +
+            '</div>' +
+            '<div class="rc" style="white-space: pre-wrap; background: var(--surface2); padding: 8px 12px; border-radius: 4px; border: 1px solid var(--border); font-size: 12px; margin-top: 4px;">' + item.content + '</div>' +
+            (tags ? '<div class="rtags">' + tags + '</div>' : '');
+          
+          list.appendChild(el);
+        });
+        box.innerHTML = ''; box.appendChild(list);
+      } catch(err) {
+        box.innerHTML = '<div class="empty" style="color:var(--red)">// failed to load feed</div>';
+      }
     }
     async function loadStats() {
       try {
@@ -921,6 +976,35 @@ const httpServer = createServer(async (req, res) => {
             totalProjects: projects.length,
             counts,
           });
+        } catch (err) {
+          json(res, 500, { error: String(err) });
+        }
+        return;
+      }
+
+      if (url === '/api/feed' && req.method === 'GET') {
+        try {
+          const all = await getAllEntriesWithProjects();
+          const active = all
+            .filter(e => !e.supersededBy)
+            .sort((a, b) => b.createdAt - a.createdAt)
+            .slice(0, 15);
+          const mapped = active.map(e => ({
+            id: e.id,
+            type: e.type,
+            category: e.category,
+            title: e.title,
+            content: e.content,
+            tags: e.tags,
+            createdAt: e.createdAt,
+            timeAgo: timeAgo(e.createdAt),
+            confidence: e.confidence,
+            project: {
+              name: e.project.name,
+              stack: e.project.stack,
+            },
+          }));
+          json(res, 200, { feed: mapped });
         } catch (err) {
           json(res, 500, { error: String(err) });
         }
