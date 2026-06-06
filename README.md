@@ -235,13 +235,28 @@ After `devbrain /init`, a post-commit hook runs after every commit. Gemini extra
 
 ---
 
-## Stack
+## Stack & Hackathon Compliance
 
-- **Runtime**: Node.js
-- **Language**: TypeScript
-- **AI Backend**: Gemini 2.0 Flash (extraction, synthesis) · gemini-embedding-001 (semantic search, 3072-dim)
-- **Database**: MongoDB Atlas (Vector Search indices)
-- **Deployment**: Google Cloud Run (SSE HTTP server transport)
-- **CLI**: inquirer · inquirer-autocomplete-prompt
-- **MCP**: `@modelcontextprotocol/sdk` (stdio & HTTP transport modes)
-- **Monorepo**: npm workspaces (`packages/core` · `packages/cli` · `packages/mcp`)
+DevBrain was built and developed during the **Microsoft Build AI Hackathon (May 5 - June 30, 2026)**.
+
+### Microsoft AI Stack Integration
+DevBrain features a **dual-provider AI backend**, fully supporting both Gemini and the **Microsoft AI Stack**:
+- **Azure OpenAI & Azure AI Foundry**: Supports GPT models for automated session recap, knowledge classification, and contextual synthesis.
+- **Azure Embeddings**: Supports generating high-dimensional vectors for semantic cosine similarity search.
+- To configure Azure AI, set the following environment variables in your `.env` file (stored in `~/.devbrain/.env`):
+  ```bash
+  AZURE_OPENAI_API_KEY="your_azure_key_here"
+  AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/openai/deployments/your-chat-deployment/chat/completions?api-version=2024-02-15-preview"
+  AZURE_OPENAI_EMBEDDING_ENDPOINT="https://your-resource.openai.azure.com/openai/deployments/your-embedding-deployment/embeddings?api-version=2024-02-15-preview"
+  ```
+
+### Open Source Libraries & APIs Credits
+We extend our credits to the following frameworks, libraries, and open-source tools that power DevBrain:
+- Runtime: **Node.js**
+- Language: **TypeScript**
+- AI Models: **Azure OpenAI API** & **Gemini API**
+- Database: **MongoDB Atlas** (using vector search index capabilities)
+- CLI Engine: **Inquirer** & **Inquirer Autocomplete Prompt**
+- MCP Protocol: **Model Context Protocol SDK** (`@modelcontextprotocol/sdk`)
+- Workspace: **npm workspaces** monorepo structure
+
