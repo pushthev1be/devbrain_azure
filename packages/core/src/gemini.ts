@@ -39,6 +39,31 @@ function getClient(): GoogleGenerativeAI {
   return client;
 }
 
+async function callLlm(prompt: string): Promise<string> {
+  if (process.env.AZURE_OPENAI_API_KEY && process.env.AZURE_OPENAI_ENDPOINT) {
+    const res = await fetch(process.env.AZURE_OPENAI_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': process.env.AZURE_OPENAI_API_KEY
+      },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.1
+      })
+    });
+    if (!res.ok) {
+      throw new Error(`Azure OpenAI error ${res.status}: ${await res.text()}`);
+    }
+    const data = await res.json() as any;
+    return data.choices[0].message.content;
+  }
+
+  const model = getClient().getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const result = await model.generateContent(prompt);
+  return result.response.text();
+}
+
 export async function extractKnowledge(diff: string, commitMessage: string): Promise<ExtractedKnowledge | null> {
   if (process.env.DEVBRAIN_MOCK === 'true') {
     const msg = commitMessage.toLowerCase();
@@ -105,8 +130,6 @@ export async function extractKnowledge(diff: string, commitMessage: string): Pro
   }
 
   try {
-    const model = getClient().getGenerativeModel({ model: 'gemini-2.0-flash' });
-
     const categoryList = ENTRY_CATEGORIES.join(' | ');
     const prompt = `You are analyzing a git commit to extract developer knowledge. Be specific and technical.
 
@@ -129,8 +152,7 @@ Return ONLY valid JSON, no markdown, no explanation:
 If this commit is just a merge, version bump, or has no meaningful knowledge, return:
 {"skip": true}`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
+    const text = (await callLlm(prompt)).trim();
 
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
@@ -169,6 +191,22 @@ export async function getEmbedding(text: string): Promise<number[]> {
     return vec;
   }
 
+  if (process.env.AZURE_OPENAI_API_KEY && process.env.AZURE_OPENAI_EMBEDDING_ENDPOINT) {
+    const res = await fetch(process.env.AZURE_OPENAI_EMBEDDING_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': process.env.AZURE_OPENAI_API_KEY
+      },
+      body: JSON.stringify({ input: text })
+    });
+    if (!res.ok) {
+      throw new Error(`Azure OpenAI Embedding error ${res.status}: ${await res.text()}`);
+    }
+    const data = await res.json() as any;
+    return data.data[0].embedding;
+  }
+
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
 
@@ -202,13 +240,9 @@ export async function summarizeProjectHistory(entries: { title: string; content:
   if (entries.length === 0) return 'No knowledge captured yet.';
 
   try {
-    const model = getClient().getGenerativeModel({ model: 'gemini-2.0-flash' });
     const sample = entries.slice(0, 15).map(e => `[${e.type}] ${e.title}: ${e.content}`).join('\n');
-
     const prompt = `Summarize a developer's experience on this project in 2-3 sentences. Focus on patterns, recurring issues, and key learnings:\n\n${sample}`;
-
-    const result = await model.generateContent(prompt);
-    return result.response.text().trim();
+    return (await callLlm(prompt)).trim();
   } catch (err) {
     rethrowIfRateLimit(err);
   }
@@ -222,9 +256,8 @@ export async function synthesizeSection(
     return "• ALWAYS return cleanups for event subscriptions inside React hooks\n• Standardize off-listeners in statusEmitter calls";
   }
 
-  if (entries.length < 2 || !process.env.GEMINI_API_KEY) return null;
+  if (entries.length < 2) return null;
   try {
-    const model = getClient().getGenerativeModel({ model: 'gemini-2.0-flash' });
     const items = entries
       .map(e => `[${e.type}] ${e.title}: ${e.content.slice(0, 200)}`)
       .join('\n');
@@ -232,8 +265,7 @@ export async function synthesizeSection(
       `You are DevBrain, a developer knowledge system. Compress these related ${label} entries into ` +
       `2-4 bullet points capturing the essential pattern, recurring root cause, or key insight. ` +
       `Each bullet must be specific and actionable. Return ONLY the bullet points, each starting with "•", no headers.\n\n${items}`;
-    const result = await model.generateContent(prompt);
-    return result.response.text().trim();
+    return (await callLlm(prompt)).trim();
   } catch {
     return null;
   }
@@ -250,13 +282,11 @@ export async function classifyQuery(query: string): Promise<{ category: EntryCat
 
   const categoryList = ENTRY_CATEGORIES.join(' | ');
   try {
-    const model = getClient().getGenerativeModel({ model: 'gemini-2.0-flash' });
     const prompt =
       `Classify this developer problem query for search routing. Return ONLY valid JSON:\n` +
       `{ "category": one of [${categoryList}], "errorPattern": "extracted error text if present, else omit" }\n\n` +
       `Query: "${query}"`;
-    const result = await model.generateContent(prompt);
-    const text   = result.response.text().trim();
+    const text = (await callLlm(prompt)).trim();
     const match  = text.match(/\{[\s\S]*\}/);
     if (!match) return { category: 'other' };
     const parsed = JSON.parse(match[0]);
@@ -280,9 +310,7 @@ export interface RecapEntry {
 }
 
 export async function recapSession(sessionText: string): Promise<RecapEntry[]> {
-  if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not set');
   const categoryList = ENTRY_CATEGORIES.join(' | ');
-  const model = getClient().getGenerativeModel({ model: 'gemini-2.0-flash' });
   const prompt =
     `You are DevBrain, a developer knowledge system. Analyze this coding session transcript and extract ` +
     `every piece of knowledge worth preserving for future sessions. Be specific and technical.\n\n` +
@@ -303,8 +331,7 @@ export async function recapSession(sessionText: string): Promise<RecapEntry[]> {
     `If nothing worth saving was found, return: []\n\n` +
     `Session transcript:\n${sessionText.slice(0, 12000)}`;
 
-  const result = await model.generateContent(prompt);
-  const text   = result.response.text().trim();
+  const text = (await callLlm(prompt)).trim();
   const match  = text.match(/\[[\s\S]*\]/);
   if (!match) return [];
   try {
@@ -321,16 +348,13 @@ export async function findMatchExplanation(query: string, matchedEntry: { title:
   }
 
   try {
-    const model = getClient().getGenerativeModel({ model: 'gemini-2.0-flash' });
-
     const prompt = `A developer is facing: "${query}"
 
     A past solution was found: "${matchedEntry.title} - ${matchedEntry.content}"
 
     In one sentence, explain why this past solution is relevant to the current problem.`;
 
-    const result = await model.generateContent(prompt);
-    return result.response.text().trim();
+    return (await callLlm(prompt)).trim();
   } catch {
     return '';
   }
